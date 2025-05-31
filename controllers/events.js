@@ -53,7 +53,7 @@ const actualizarEvento = async( req, res = response ) => {
         }
 
         if ( evento.user.toString() !== uid ) {
-            return res.status(401).json({
+            return res.status(500).json({
                 ok: false,
                 msg: 'No tiene privilegio de editar este evento'
             });
