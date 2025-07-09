@@ -1,0 +1,123 @@
+# .github/workflows/backend-pipeline.yml
+name: Backend CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, qa ]
+  pull_request:
+    branches: [ main, develop, qa ]
+
+env:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_USERNAME: edwardsalinas
+  IMAGE_NAME: calendar-backend
+
+jobs:
+  # Job para testing y linting
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:5.0
+        ports:
+          - 27017:27017
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run ESLint
+      run: npm run lint
+
+    - name: Run unit tests
+      run: npm run test:unit
+      env:
+        DB_CNN: mongodb://localhost:27017/calendar_test
+        SECRET_JWT_SEED: test-secret-key
+
+    - name: Run integration tests
+      run: npm run test:integration
+      env:
+        DB_CNN: mongodb://localhost:27017/calendar_test
+        SECRET_JWT_SEED: test-secret-key
+
+    - name: Run coverage tests
+      run: npm run test:coverage
+      env:
+        DB_CNN: mongodb://localhost:27017/calendar_test
+        SECRET_JWT_SEED: test-secret-key
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/clover.xml
+        flags: backend
+
+  # Job para build y deploy
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ env.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Determine environment
+      id: env
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=prod" >> $GITHUB_OUTPUT
+          echo "tag=latest" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/qa" ]]; then
+          echo "environment=qa" >> $GITHUB_OUTPUT
+          echo "tag=qa" >> $GITHUB_OUTPUT
+        else
+          echo "environment=dev" >> $GITHUB_OUTPUT
+          echo "tag=dev" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: |
+          ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.tag }}
+          ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        build-args: |
+          NODE_ENV=${{ steps.env.outputs.environment }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Deploy to environment
+      run: |
+        echo "Deploying to ${{ steps.env.outputs.environment }} environment"
+        # Aquí puedes agregar los comandos específicos para tu despliegue
+        # Por ejemplo: kubectl, docker-compose, etc.
+        
+    - name: Notify deployment
+      if: always()
+      run: |
+        echo "Backend deployment to ${{ steps.env.outputs.environment }} completed"

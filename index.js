@@ -11,7 +11,9 @@ const { dbConnection } = require('./database/config');
 const app = express();
 
 //Base de datos
-dbConnection();
+if (process.env.NODE_ENV !== 'test') {
+    dbConnection();
+}
 
 // CORS
 app.use( cors() )
@@ -29,8 +31,13 @@ app.use('/api/events', require('./routes/events'));
 app.use('/{*splat}', ( req, res) => {
     res.sendFile(path.join(__dirname, 'public/index.html'));
 });
+
 //Escuchar Peticiones
-app.listen( process.env.PORT, () => {
-    console.log(`Servidor corriendo en puerto ${ process.env.PORT }`);
-    
-})
+if (process.env.NODE_ENV !== 'test') {
+    app.listen( process.env.PORT, () => {
+        console.log(`Servidor corriendo en puerto ${ process.env.PORT }`);
+        
+    })
+}
+
+module.exports = app;

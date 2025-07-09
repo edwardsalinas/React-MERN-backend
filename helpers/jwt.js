@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const { Promise } = require('mongoose');
 
 const generarJWT = (u_id, name) => {
     const payload = { u_id, name };
